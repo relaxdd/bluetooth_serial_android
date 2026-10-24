@@ -1,3 +1,13 @@
+## Não lançado
+
+### 🇧🇷 Gerenciamento de conexão RFCOMM
+- Adicionado cancelamento explícito da descoberta pelo canal nativo, com conclusão da busca pendente.
+- Adicionados limite de tempo para conexão e proteção contra substituição de uma sessão ativa.
+- Corrigidos o fechamento do socket e o tratamento de falhas de conexão e escrita.
+- A escrita agora falha quando não existe uma conexão ativa, em vez de informar sucesso sem enviar dados.
+- Adicionada notificação nativa de desconexão para atualização do estado no aplicativo.
+- Mantido o suporte a apenas uma conexão ativa; conexões simultâneas ainda não são suportadas.
+
 ## 1.1.3
 
 ### 🇧🇷 Correções de compatibilidade com Android
