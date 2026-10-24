@@ -1,3 +1,13 @@
+## 1.1.3
+
+### 🇧🇷 Correções de compatibilidade com Android
+- Corrigida a verificação de permissões de descoberta conforme a versão do Android: localização precisa até o Android 11; permissões de varredura e conexão Bluetooth no Android 12 ou superior.
+- Corrigida a leitura do dispositivo nos eventos de descoberta em versões anteriores ao Android 13.
+- Ajustado o registro do receptor de eventos Bluetooth no Android 13 ou superior, com indicação explícita de exportação.
+- Cancelada a descoberta anterior antes do registro do novo receptor.
+- Adicionada a declaração de que a varredura Bluetooth não é utilizada para determinar a localização (`neverForLocation`).
+- Mantida a compatibilidade com a API pública Dart existente.
+
 ## 1.1.2
 
 ### 🇺🇸 Minor fixes

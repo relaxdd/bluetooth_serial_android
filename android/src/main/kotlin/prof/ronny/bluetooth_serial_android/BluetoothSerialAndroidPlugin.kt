@@ -18,6 +18,7 @@ import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import java.io.IOException
+import android.os.Build
 import java.io.InputStream
 import java.io.OutputStream
 import java.net.SocketTimeoutException
@@ -78,6 +79,23 @@ class BluetoothSerialAndroidPlugin : FlutterPlugin, MethodChannel.MethodCallHand
     // ========================================================
     //                  PERMISSÕES
     // ========================================================
+    private fun requiredPermissionsForScan(): List<String> {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            listOf(
+                Manifest.permission.BLUETOOTH_CONNECT,
+                Manifest.permission.BLUETOOTH_SCAN
+            )
+        } else {
+            listOf(Manifest.permission.ACCESS_FINE_LOCATION)
+        }
+    }
+
+    private fun missingPermissions(ctx: Context, permissions: List<String>): List<String> {
+        return permissions.filter {
+            ContextCompat.checkSelfPermission(ctx, it) != PackageManager.PERMISSION_GRANTED
+        }
+    }
+
     private fun ensurePermissions(result: MethodChannel.Result) {
         val act = activity
         val ctx = context
@@ -86,16 +104,7 @@ class BluetoothSerialAndroidPlugin : FlutterPlugin, MethodChannel.MethodCallHand
             return
         }
 
-        val requiredPermissions = listOf(
-            Manifest.permission.BLUETOOTH_CONNECT,
-            Manifest.permission.BLUETOOTH_SCAN,
-            Manifest.permission.ACCESS_FINE_LOCATION
-        )
-
-        val missingPermissions = requiredPermissions.filter {
-            ContextCompat.checkSelfPermission(ctx, it) != PackageManager.PERMISSION_GRANTED
-        }
-
+        val missingPermissions = missingPermissions(ctx, requiredPermissionsForScan())
         if (missingPermissions.isEmpty()) {
             result.success(true)
             return
@@ -128,17 +137,9 @@ class BluetoothSerialAndroidPlugin : FlutterPlugin, MethodChannel.MethodCallHand
         val act = activity ?: return result.error("NO_ACTIVITY", "Activity ausente", null)
         val adapter = adapter ?: return result.error("NO_ADAPTER", "Bluetooth não suportado", null)
 
-        val hasScan = ContextCompat.checkSelfPermission(ctx, Manifest.permission.BLUETOOTH_SCAN) ==
-                PackageManager.PERMISSION_GRANTED
-        val hasLoc = ContextCompat.checkSelfPermission(ctx, Manifest.permission.ACCESS_FINE_LOCATION) ==
-                PackageManager.PERMISSION_GRANTED
-
-        if (!hasScan || !hasLoc) {
-            ActivityCompat.requestPermissions(
-                act,
-                arrayOf(Manifest.permission.BLUETOOTH_SCAN, Manifest.permission.ACCESS_FINE_LOCATION),
-                1001
-            )
+        val missingPermissions = missingPermissions(ctx, requiredPermissionsForScan())
+        if (missingPermissions.isNotEmpty()) {
+            ActivityCompat.requestPermissions(act, missingPermissions.toTypedArray(), 1001)
             result.error("NO_PERMISSION", "Permissões não concedidas", null)
             return
         }
@@ -149,8 +150,12 @@ class BluetoothSerialAndroidPlugin : FlutterPlugin, MethodChannel.MethodCallHand
             override fun onReceive(context: Context?, intent: android.content.Intent?) {
                 val action = intent?.action
                 if (BluetoothDevice.ACTION_FOUND == action) {
-                    val device: BluetoothDevice? =
+                    @Suppress("DEPRECATION")
+                    val device: BluetoothDevice? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                         intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE, BluetoothDevice::class.java)
+                    } else {
+                        intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE)
+                    }
                     if (device != null) {
                         val map = mapOf(
                             "name" to (device.name ?: "Desconhecido"),
@@ -171,9 +176,16 @@ class BluetoothSerialAndroidPlugin : FlutterPlugin, MethodChannel.MethodCallHand
         val filter = IntentFilter()
         filter.addAction(BluetoothDevice.ACTION_FOUND)
         filter.addAction(BluetoothAdapter.ACTION_DISCOVERY_FINISHED)
-        ctx.registerReceiver(receiver, filter)
-
+        // Bluetooth events can come from a privileged system
+        // process, so Android 13+ requires RECEIVER_EXPORTED.
         if (adapter.isDiscovering) adapter.cancelDiscovery()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            ctx.registerReceiver(receiver, filter, Context.RECEIVER_EXPORTED)
+        } else {
+            @Suppress("DEPRECATION")
+            ctx.registerReceiver(receiver, filter)
+        }
+
         val started = adapter.startDiscovery()
         if (!started) {
             ctx.unregisterReceiver(receiver)
