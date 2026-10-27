@@ -21,6 +21,7 @@ import java.io.IOException
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.content.BroadcastReceiver
 import android.content.Intent
 import java.io.InputStream
@@ -41,6 +42,9 @@ class BluetoothSerialAndroidPlugin : FlutterPlugin, MethodChannel.MethodCallHand
     private var output: OutputStream? = null
     private var readBuffer = StringBuilder()
     private var timeoutMs: Int = 200
+    private val readLock = Any()
+    private var readGeneration = 0L
+    private var pendingRead: MethodChannel.Result? = null
     private val mainHandler = Handler(Looper.getMainLooper())
     private var discoveryReceiver: BroadcastReceiver? = null
     private var discoveryResult: MethodChannel.Result? = null
@@ -129,7 +133,11 @@ class BluetoothSerialAndroidPlugin : FlutterPlugin, MethodChannel.MethodCallHand
                 val message = call.argument<String>("message") ?: ""
                 write(message, result)
             }
-            "read" -> read(result)
+            "read" -> read(call.argument<Int>("timeoutMs") ?: 200, result)
+            "cancelRead" -> {
+                cancelRead()
+                result.success(null)
+            }
             "readLine" -> {
                 val delimiter = call.argument<String>("delimiter") ?: "\n"
                 readLine(delimiter, result)
@@ -327,6 +335,7 @@ class BluetoothSerialAndroidPlugin : FlutterPlugin, MethodChannel.MethodCallHand
     //                  DESCONECTAR
     // ========================================================
     private fun disconnect() {
+        cancelRead()
         val current = socket
         socket = null
         input = null
@@ -368,24 +377,63 @@ class BluetoothSerialAndroidPlugin : FlutterPlugin, MethodChannel.MethodCallHand
     // ========================================================
     //                  LEITURA (ASSÍNCRONA)
     // ========================================================
-    private fun read(result: MethodChannel.Result) {
+    private fun cancelRead() {
+        // The lock also protects the last check immediately before input.read,
+        // so an old worker cannot consume a new transaction after cancellation.
+        synchronized(readLock) { readGeneration++ }
+        val previous = pendingRead
+        pendingRead = null
+        previous?.success(null)
+    }
+
+    private fun read(waitMs: Int, result: MethodChannel.Result) {
+        if (pendingRead != null) {
+            result.error("READ_BUSY", "Another read is still pending", null)
+            return
+        }
+        val current = socket
+        val stream = input
+        if (current == null || stream == null) {
+            result.error("NOT_CONNECTED", "No active Bluetooth connection", null)
+            return
+        }
+        pendingRead = result
+        val generation = synchronized(readLock) { ++readGeneration }
+        fun finish(data: String? = null, error: String? = null) {
+            mainHandler.post {
+                if (pendingRead === result) {
+                    pendingRead = null
+                    if (error == null) result.success(data)
+                    else result.error("READ_ERROR", error, null)
+                }
+            }
+        }
         thread {
             try {
                 val buffer = ByteArray(1024)
-                val start = System.currentTimeMillis()
-                while (System.currentTimeMillis() - start < timeoutMs) {
-                    val available = input?.available() ?: 0
-                    if (available > 0) {
-                        val bytesRead = input!!.read(buffer, 0, available)
-                        val data = String(buffer, 0, bytesRead)
-                        activity?.runOnUiThread { result.success(data) }
+                val start = SystemClock.elapsedRealtime()
+                while (SystemClock.elapsedRealtime() - start < waitMs.coerceIn(1, 5000)) {
+                    val data = synchronized(readLock) {
+                        if (generation != readGeneration) return@thread
+                        if (socket !== current || input !== stream) {
+                            throw IOException("Bluetooth connection changed during read")
+                        }
+                        val available = stream.available().coerceAtMost(buffer.size)
+                        if (available > 0) {
+                            val bytesRead = stream.read(buffer, 0, available)
+                            if (bytesRead < 0) throw IOException("Bluetooth stream closed")
+                            String(buffer, 0, bytesRead, Charsets.US_ASCII)
+                        } else null
+                    }
+                    if (data != null) {
+                        finish(data)
                         return@thread
                     }
                     Thread.sleep(10)
                 }
-                activity?.runOnUiThread { result.success(null) } // timeout sem dados
+                finish()
             } catch (e: IOException) {
-                activity?.runOnUiThread { result.error("READ_ERROR", e.message, null) }
+                finish(error = e.message ?: "Bluetooth read failed")
             }
         }
     }

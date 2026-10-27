@@ -38,8 +38,12 @@ abstract class BluetoothSerialPlatform extends PlatformInterface {
     throw UnimplementedError('write() has not been implemented.');
   }
 
-  Future<String?> read() {
+  Future<String?> read({int timeoutMs = 200}) {
     throw UnimplementedError('read() has not been implemented.');
+  }
+
+  Future<void> cancelRead() {
+    throw UnimplementedError('cancelRead() has not been implemented.');
   }
 
   Future<String?> readLine([String delimiter = "\n"]) {

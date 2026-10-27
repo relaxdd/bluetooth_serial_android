@@ -90,8 +90,13 @@ class MethodChannelBluetoothSerial extends BluetoothSerialPlatform {
   /// * `String` caso dados estejam disponíveis
   /// * `null` no caso de timeout ou nenhum dado
   @override
-  Future<String?> read() async {
-    return await _channel.invokeMethod('read');
+  Future<String?> read({int timeoutMs = 200}) async {
+    return await _channel.invokeMethod('read', {'timeoutMs': timeoutMs});
+  }
+
+  @override
+  Future<void> cancelRead() async {
+    await _channel.invokeMethod<void>('cancelRead');
   }
 
   /// Lê uma linha completa até encontrar o [delimiter].

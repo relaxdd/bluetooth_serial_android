@@ -74,8 +74,15 @@ class FlutterBluetoothSerial {
   /// Returns:
   /// * String containing the received data
   /// * `null` if no data is available or if a timeout occurs
-  static Future<String?> read() {
-    return BluetoothSerialPlatform.instance.read();
+  ///
+  /// [timeoutMs] limits this read independently of the connection timeout.
+  static Future<String?> read({int timeoutMs = 200}) {
+    return BluetoothSerialPlatform.instance.read(timeoutMs: timeoutMs);
+  }
+
+  /// Cancels a pending raw read before starting another transaction.
+  static Future<void> cancelRead() {
+    return BluetoothSerialPlatform.instance.cancelRead();
   }
 
   /// Reads a complete line based on a delimiter such as `\n`, `\r`, or `\r\n`.

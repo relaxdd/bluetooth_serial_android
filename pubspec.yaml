@@ -2,7 +2,7 @@ name: bluetooth_serial_android
 description: Flutter plugin for Classic Bluetooth (Serial RFCOMM) on Android. Enables device scanning, pairing, connection, and serial communication.
 
 
-version: 1.1.4-dev
+version: 1.1.4
 homepage: https://github.com/prof-ronny/bluetooth_serial_android
 repository: https://github.com/prof-ronny/bluetooth_serial_android
 issue_tracker: https://github.com/prof-ronny/bluetooth_serial_android/issues
